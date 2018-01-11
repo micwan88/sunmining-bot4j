@@ -76,8 +76,13 @@ public class SMDaemon implements AutoCloseable {
 			throw new IllegalArgumentException("tbot.chatID cannot be empty");
 		
 		tempStr = appProperties.getProperty("smdaemon.defaultsleeptime");
+		myLogger.debug("smdaemon.defaultsleeptime: {}" , tempStr);
 		if (tempStr != null && tempStr.trim().length() != 0) {
-			
+			try {
+				sleepTime = Long.parseLong(tempStr);
+			} catch (Exception e) {
+				myLogger.error("Cannot parse value from smdaemon.defaultsleeptime");
+			}
 		}
 		
 		RequestConfig httpConfig = RequestConfig.custom()
@@ -132,13 +137,8 @@ public class SMDaemon implements AutoCloseable {
 			if (respMsg == null || !respMsg.equals(""))
 				myLogger.error("Cannot post notification: {}" , respMsg);
 			
-			while (Files.isRegularFile(pidFile)) {
-				try {
-					Thread.sleep(DEFAULT_SLEEP_TIME);
-				} catch (InterruptedException e) {
-					//Do Nothing
-				}
-			}
+			while (Files.isRegularFile(pidFile))
+				smDaemon.sleep();
 			
 			myLogger.debug("PID file not exist, so quit ... : {}", pidFile.toAbsolutePath());
 		} finally {
@@ -155,6 +155,14 @@ public class SMDaemon implements AutoCloseable {
 	public void resetHttpClient() {
 		cookieStore.clear();
 		httpContext = HttpClientContext.create();
+	}
+	
+	public void sleep() {
+		try {
+			Thread.sleep(sleepTime);
+		} catch (InterruptedException e) {
+			//Do Nothing
+		}
 	}
 	
 	public String postNotification(String notificationMsg) {
