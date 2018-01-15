@@ -5,6 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
@@ -15,6 +18,34 @@ public class AppPropertiesUtil {
 	
 	private static final Logger myLogger = LogManager.getLogger(AppPropertiesUtil.class);
 	private static Properties appProperties = null;
+	
+	public Properties loadOtherProperties(Path propertyFilePath) {
+		BufferedReader br = null;
+		
+		myLogger.debug("try loading property file {}", propertyFilePath.toAbsolutePath());
+		
+		try {
+			br = Files.newBufferedReader(propertyFilePath, Charset.forName("UTF-8"));
+			Properties tmpProperties = new Properties();
+			tmpProperties.load(br);
+			
+			myLogger.debug("Load property file done");
+			
+			return tmpProperties;
+		} catch (UnsupportedEncodingException e) {
+			myLogger.error("Cannot read property file", e);
+		} catch (IOException e) {
+			myLogger.error("Cannot read property file", e);
+		} finally {
+			try {
+				if (br != null)
+					br.close();
+			} catch (IOException e) {
+				//Do Nothing
+			}
+		}
+		return null;
+	}
 	
 	private Properties loadAppProperties() {
 		if (appProperties != null)

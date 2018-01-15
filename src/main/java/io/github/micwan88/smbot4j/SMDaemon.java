@@ -36,7 +36,13 @@ public class SMDaemon implements AutoCloseable {
 	public static final int DEFAULT_CONNECTION_TIMEOUT_VALUE = 3000;
 	public static final int DEFAULT_SOCKET_TIMEOUT_VALUE = 3000;
 	
+	/****************************************************************************************************/
+	
 	public static final String URL_TELEGRAM_BOT_BASE = "https://api.telegram.org/bot";
+	
+	public static final String URL_SUN_MINING_BASE = "https://sun-mining.com/en";
+	public static final String URL_SUN_MINING_DASHBOARD_PAGE = URL_SUN_MINING_BASE + "/dashboard";
+	public static final String URL_SUN_MINING_BALANCE_PAGE = URL_SUN_MINING_BASE + "/balance";
 	
 	public static final String HTTP_HEADER_CONTENT_TYPE = "Content-Type";
 	public static final String CONTENT_TYPE_JSON = "application/json";
@@ -45,8 +51,15 @@ public class SMDaemon implements AutoCloseable {
 	
 	private static final Logger myLogger = LogManager.getLogger(SMDaemon.class);
 	
+	/****************************************************************************************************/
+	
 	private final Pattern PATTERN_TELEGRAM_BOT_RESP_MSG_OK = Pattern.compile("\"ok\"\\s*\\:\\s*true");
 	private final Matcher MATCHER_TELEGRAM_BOT_RESP_MSG_OK = PATTERN_TELEGRAM_BOT_RESP_MSG_OK.matcher("");
+	
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+(\"\\d{4}-\\d{2}-\\d{2}\",\\s*)\\]");
+	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_DATE = PATTERN_SM_RESP_DASHBOARD_LATEST_DATE.matcher("");
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+,\\s*)+(\\d+,\\s*)\\]");
+	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT = PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT.matcher("");
 	
 	private CloseableHttpClient httpClient = null;
 	private HttpClientContext httpContext = null;
@@ -76,14 +89,14 @@ public class SMDaemon implements AutoCloseable {
 			throw new IllegalArgumentException("tbot.chatID cannot be empty");
 		
 		tempStr = appProperties.getProperty("smdaemon.defaultsleeptime");
-		myLogger.debug("smdaemon.defaultsleeptime: {}" , tempStr);
 		if (tempStr != null && tempStr.trim().length() != 0) {
 			try {
 				sleepTime = Long.parseLong(tempStr);
 			} catch (Exception e) {
-				myLogger.error("Cannot parse value from smdaemon.defaultsleeptime");
+				myLogger.error("Cannot parse value from smdaemon.defaultsleeptime: {}", tempStr);
 			}
 		}
+		myLogger.debug("smdaemon.defaultsleeptime: {}" , tempStr);
 		
 		RequestConfig httpConfig = RequestConfig.custom()
 				.setContentCompressionEnabled(true)
@@ -137,8 +150,12 @@ public class SMDaemon implements AutoCloseable {
 			if (respMsg == null || !respMsg.equals(""))
 				myLogger.error("Cannot post notification: {}" , respMsg);
 			
-			while (Files.isRegularFile(pidFile))
+			while (Files.isRegularFile(pidFile)) {
+				
+				//Do something
+				
 				smDaemon.sleep();
+			}
 			
 			myLogger.debug("PID file not exist, so quit ... : {}", pidFile.toAbsolutePath());
 		} finally {
@@ -208,9 +225,9 @@ public class SMDaemon implements AutoCloseable {
 		return null;
 	}
 	
-	public String getSMBalance() {
-		String apiURL = "";
-		//myLogger.debug("getSMBalance URL: {}", apiURL);
+	public String getSMProfit() {
+		String apiURL = URL_SUN_MINING_DASHBOARD_PAGE;
+		myLogger.debug("getSMProfit URL: {}", apiURL);
 		
 		HttpGet httpget = new HttpGet(apiURL);
 		
@@ -230,7 +247,34 @@ public class SMDaemon implements AutoCloseable {
 			myLogger.error("Unknown error in executing http request", e);
 		} finally {
 			HttpClientUtils.closeQuietly(httpResponse);
-			//myLogger.debug("getSMBalance end");
+			myLogger.debug("getSMProfit end");
+		}
+		return null;
+	}
+	
+	public String getSMBalance() {
+		String apiURL = URL_SUN_MINING_BALANCE_PAGE;
+		myLogger.debug("getSMBalance URL: {}", apiURL);
+		
+		HttpGet httpget = new HttpGet(apiURL);
+		
+		CloseableHttpResponse httpResponse = null;
+		try {
+			httpResponse = httpClient.execute(httpget, httpContext);
+			HttpEntity httpEntity = httpResponse.getEntity();
+			if (httpEntity == null) {
+				myLogger.error("No content on the request: {}", apiURL);
+				return null;
+			}
+			
+			return EntityUtils.toString(httpEntity, "UTF-8");
+		} catch (IOException e) {
+			myLogger.error("Cannot execute http request", e);
+		} catch (Exception e) {
+			myLogger.error("Unknown error in executing http request", e);
+		} finally {
+			HttpClientUtils.closeQuietly(httpResponse);
+			myLogger.debug("getSMBalance end");
 		}
 		return null;
 	}
