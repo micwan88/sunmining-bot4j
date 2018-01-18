@@ -1,9 +1,12 @@
 package io.github.micwan88.smbot4j;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,6 +29,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.gson.JsonObject;
 
+import io.github.micwan88.smbot4j.bean.SMProfit;
+import io.github.micwan88.smbot4j.bean.SMProfitMessage;
 import io.github.micwan88.util.AppPropertiesUtil;
 
 public class SMDaemon implements AutoCloseable {
@@ -41,6 +46,7 @@ public class SMDaemon implements AutoCloseable {
 	public static final String URL_TELEGRAM_BOT_BASE = "https://api.telegram.org/bot";
 	
 	public static final String URL_SUN_MINING_BASE = "https://sun-mining.com/en";
+	public static final String URL_SUN_MINING_LOGIN_PAGE = URL_SUN_MINING_BASE + "/login";
 	public static final String URL_SUN_MINING_DASHBOARD_PAGE = URL_SUN_MINING_BASE + "/dashboard";
 	public static final String URL_SUN_MINING_BALANCE_PAGE = URL_SUN_MINING_BASE + "/balance";
 	
@@ -56,9 +62,9 @@ public class SMDaemon implements AutoCloseable {
 	private final Pattern PATTERN_TELEGRAM_BOT_RESP_MSG_OK = Pattern.compile("\"ok\"\\s*\\:\\s*true");
 	private final Matcher MATCHER_TELEGRAM_BOT_RESP_MSG_OK = PATTERN_TELEGRAM_BOT_RESP_MSG_OK.matcher("");
 	
-	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+(\"\\d{4}-\\d{2}-\\d{2}\",\\s*)\\]");
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+\"(\\d{4}-\\d{2}-\\d{2})\",\\s*\\]");
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_DATE = PATTERN_SM_RESP_DASHBOARD_LATEST_DATE.matcher("");
-	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+,\\s*)+(\\d+,\\s*)\\]");
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+,\\s*)+(\\d+),\\s*\\]");
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT = PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT.matcher("");
 	
 	private CloseableHttpClient httpClient = null;
@@ -225,7 +231,7 @@ public class SMDaemon implements AutoCloseable {
 		return null;
 	}
 	
-	public String getSMProfit() {
+	public SMProfitMessage getSMProfit() {
 		String apiURL = URL_SUN_MINING_DASHBOARD_PAGE;
 		myLogger.debug("getSMProfit URL: {}", apiURL);
 		
@@ -234,13 +240,33 @@ public class SMDaemon implements AutoCloseable {
 		CloseableHttpResponse httpResponse = null;
 		try {
 			httpResponse = httpClient.execute(httpget, httpContext);
+			
+			List<URI> redirectList = httpContext.getRedirectLocations();
+			if (redirectList != null)
+				if (redirectList.get(redirectList.size()-1).toString().startsWith(URL_SUN_MINING_LOGIN_PAGE)) {
+					return new SMProfitMessage("Cannot login to SM", -1);
+				};
+			
 			HttpEntity httpEntity = httpResponse.getEntity();
 			if (httpEntity == null) {
 				myLogger.error("No content on the request: {}", apiURL);
-				return null;
+				return new SMProfitMessage("Cannot load SM page", -2);
 			}
 			
-			return EntityUtils.toString(httpEntity, "UTF-8");
+			String responseMsg = EntityUtils.toString(httpEntity, "UTF-8");
+			MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.reset(responseMsg);
+			MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.reset(responseMsg);
+			
+			SMProfitMessage returnMsg = new SMProfitMessage();
+			ArrayList<SMProfit> profitList = new ArrayList<>();
+			while (MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.find()) {
+				if (MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.find()) {
+					
+				}
+			}
+			
+			myLogger.error("Unknown response msg: {}", responseMsg);
+			return new SMProfitMessage("Unknown response msg from SM page", -3);
 		} catch (IOException e) {
 			myLogger.error("Cannot execute http request", e);
 		} catch (Exception e) {
@@ -249,7 +275,7 @@ public class SMDaemon implements AutoCloseable {
 			HttpClientUtils.closeQuietly(httpResponse);
 			myLogger.debug("getSMProfit end");
 		}
-		return null;
+		return new SMProfitMessage("Unexpected error", -4);
 	}
 	
 	public String getSMBalance() {
