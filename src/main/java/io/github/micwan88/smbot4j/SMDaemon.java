@@ -5,6 +5,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -152,13 +153,21 @@ public class SMDaemon implements AutoCloseable {
 			
 			myLogger.debug("Start looping ...");
 			
-			respMsg = smDaemon.postNotification("");
-			if (respMsg == null || !respMsg.equals(""))
-				myLogger.error("Cannot post notification: {}" , respMsg);
-			
 			while (Files.isRegularFile(pidFile)) {
-				
-				//Do something
+				SMProfitMessage smProfitMsg = smDaemon.getSMProfit();
+				if (smProfitMsg.getErrCode() == -1) {
+					
+					respMsg = smDaemon.postNotification("Cannot login to SM");
+					if (respMsg == null || !respMsg.equals(""))
+						myLogger.error("Cannot post notification: {}" , respMsg);
+					
+					myLogger.error("Lost session, so quit ...");
+					break;
+				} else if (smProfitMsg.getErrCode() == 0) {
+					
+				} else {
+					//Reset http
+				}
 				
 				smDaemon.sleep();
 			}
@@ -244,6 +253,7 @@ public class SMDaemon implements AutoCloseable {
 			List<URI> redirectList = httpContext.getRedirectLocations();
 			if (redirectList != null)
 				if (redirectList.get(redirectList.size()-1).toString().startsWith(URL_SUN_MINING_LOGIN_PAGE)) {
+					myLogger.error("Cannot login to SM");
 					return new SMProfitMessage("Cannot login to SM", -1);
 				};
 			
@@ -257,16 +267,26 @@ public class SMDaemon implements AutoCloseable {
 			MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.reset(responseMsg);
 			MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.reset(responseMsg);
 			
-			SMProfitMessage returnMsg = new SMProfitMessage();
 			ArrayList<SMProfit> profitList = new ArrayList<>();
 			while (MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.find()) {
 				if (MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.find()) {
-					
+					SMProfit smProfit = new SMProfit(MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.group(1), 
+							Integer.parseInt(MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1)));
+					profitList.add(smProfit);
+				} else {
+					myLogger.error("Unknown response msg: {}", responseMsg);
+					return new SMProfitMessage("Unknown response msg from SM page", -3);
 				}
 			}
 			
-			myLogger.error("Unknown response msg: {}", responseMsg);
-			return new SMProfitMessage("Unknown response msg from SM page", -3);
+			if (profitList.isEmpty()) {
+				myLogger.error("Unknown response msg: {}", responseMsg);
+				return new SMProfitMessage("Unknown response msg from SM page", -3);
+			}
+			
+			return new SMProfitMessage(profitList);
+		} catch (ParseException e) {
+			myLogger.error("Cannot parse profit value", e);
 		} catch (IOException e) {
 			myLogger.error("Cannot execute http request", e);
 		} catch (Exception e) {

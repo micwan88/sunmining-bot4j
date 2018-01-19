@@ -6,8 +6,12 @@ public class SMProfitMessage {
 	private String errMsg = null;
 	private int errCode = 0;
 	private ArrayList<SMProfit> smProfitList = null;
-	
-	public SMProfitMessage() {
+
+	/**
+	 * @param smProfitList
+	 */
+	public SMProfitMessage(ArrayList<SMProfit> smProfitList) {
+		this.smProfitList = smProfitList;
 	}
 
 	/**
