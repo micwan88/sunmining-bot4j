@@ -17,6 +17,11 @@ sourceSets {
 			srcDir 'conf/dev/build/app'
 		}
 	}
+	test {
+		resources {
+			srcDir 'conf/dev/runtime'
+		}
+	}
 }
 
 jar {
@@ -61,6 +66,13 @@ dependencies {
 
 task deploy(type: Copy) {
  	dependsOn jar
+ 	
+ 	if (project.hasProperty('Env')) {
+ 		from "conf/${Env}/runtime"
+ 	} else {
+ 		from "conf/dev/runtime"
+ 	}
+ 	
  	from configurations.runtime
  	into "${project.projectDir}/build/libs"
 }
