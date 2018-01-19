@@ -14,7 +14,7 @@ apply plugin: 'java'
 sourceSets { 
 	main {
 		resources {
-			srcDir 'conf/dev/app'
+			srcDir 'conf/dev/build/app'
 		}
 	}
 }
@@ -25,7 +25,7 @@ jar {
 			sourceSets {
 				main {
 					resources {
-						srcDir 'conf/prd/app'
+						srcDir 'conf/prd/build/app'
 					}
 				}
 			}
