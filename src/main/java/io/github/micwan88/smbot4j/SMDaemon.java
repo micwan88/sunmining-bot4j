@@ -7,7 +7,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 import java.util.regex.Matcher;
@@ -55,6 +57,7 @@ public class SMDaemon implements AutoCloseable {
 	public static final String URL_SUN_MINING_LOGIN_PAGE = URL_SUN_MINING_BASE + "/login";
 	public static final String URL_SUN_MINING_DASHBOARD_PAGE = URL_SUN_MINING_BASE + "/dashboard";
 	public static final String URL_SUN_MINING_BALANCE_PAGE = URL_SUN_MINING_BASE + "/balance";
+	public static final String[] SUN_MINING_COINS_ARRAY = {"Btc", "Eth", "Dash", "Ltc"};
 	
 	public static final String HTTP_HEADER_CONTENT_TYPE = "Content-Type";
 	public static final String CONTENT_TYPE_JSON = "application/json";
@@ -180,8 +183,9 @@ public class SMDaemon implements AutoCloseable {
 			System.exit(-2);
 		}
 		
+		String notifyMsg = null;
 		String respMsg = null;
-		
+		SMProfit[] lastSMProfit = new SMProfit[4]; 
 		try (SMDaemon smDaemon = new SMDaemon(appProperties)) {
 			
 			myLogger.debug("Start looping ...");
@@ -197,7 +201,13 @@ public class SMDaemon implements AutoCloseable {
 					myLogger.error("Lost session, break process ...");
 					break;
 				} else if (smProfitMsg.getErrCode() == 0) {
-					
+					notifyMsg = smDaemon.composeProfitNotification(smProfitMsg.getSmProfitList(), lastSMProfit);
+					if (notifyMsg.length() > 0) {
+						myLogger.debug("SM profit change, send notification: {}", notifyMsg);
+						respMsg = smDaemon.postNotification(notifyMsg);
+						if (respMsg == null || !respMsg.equals(""))
+							myLogger.error("Cannot post notification: {}" , respMsg);
+					}
 				} else {
 					smDaemon.resetHttpClient();
 				}
@@ -312,9 +322,8 @@ public class SMDaemon implements AutoCloseable {
 			
 			ArrayList<SMProfit> profitList = new ArrayList<>();
 			while (MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.find()) {
-				myLogger.debug("Date: {}", MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.group(1));
 				if (MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.find()) {
-					myLogger.debug("Profit: {}", MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1));
+					myLogger.debug("Date: {} Profit: {}", MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.group(1), MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1));
 					SMProfit smProfit = new SMProfit(MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.group(1), 
 							new BigDecimal(MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1)));
 					profitList.add(smProfit);
@@ -329,6 +338,11 @@ public class SMDaemon implements AutoCloseable {
 				return new SMProfitMessage("Unknown response msg from SM page", -3);
 			}
 			
+			if (profitList.size() < 4) {
+				myLogger.error("Cannot parse all coins profit from SM page: {}", responseMsg);
+				return new SMProfitMessage("Cannot parse all coins profit from SM page", -4);
+			}
+			
 			return new SMProfitMessage(profitList);
 		} catch (ParseException e) {
 			myLogger.error("Cannot parse profit value", e);
@@ -340,7 +354,7 @@ public class SMDaemon implements AutoCloseable {
 			HttpClientUtils.closeQuietly(httpResponse);
 			myLogger.debug("getSMProfit end");
 		}
-		return new SMProfitMessage("Unexpected error", -4);
+		return new SMProfitMessage("Unexpected error", -5);
 	}
 	
 	public String getSMBalance() {
@@ -368,5 +382,30 @@ public class SMDaemon implements AutoCloseable {
 			myLogger.debug("getSMBalance end");
 		}
 		return null;
+	}
+	
+	public String composeProfitNotification(ArrayList<SMProfit> smProfitList, SMProfit[] lastSMProfit) {
+		StringBuffer notificationMsg = new StringBuffer();
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+		String todayDateStr = dateFormat.format(new Date());
+		
+		for (int i=0; i<4; i++) {
+			SMProfit smProfit = smProfitList.get(i);
+			//myLogger.debug(smProfit.getProfitDate() + ":" + smProfit.getProfitValue());
+			if (dateFormat.format(smProfit.getProfitDate()).equals(todayDateStr) && smProfit.getProfitValue().compareTo(new BigDecimal(0)) > 0) {
+				if (lastSMProfit[i] == null || !dateFormat.format(lastSMProfit[i].getProfitDate()).equals(todayDateStr)
+						|| !lastSMProfit[i].getProfitValue().equals(smProfit.getProfitValue())) {
+					lastSMProfit[i] = smProfit;
+					
+					notificationMsg.append(SUN_MINING_COINS_ARRAY[i] + ":" + smProfit.getProfitValue() + "\n");
+					myLogger.debug(SUN_MINING_COINS_ARRAY[i] + ":" + smProfit.getProfitValue());
+				}
+			}
+		}
+		
+		if (notificationMsg.length() > 0)
+			notificationMsg.insert(0, "SM Profit of <b>" + todayDateStr + "</b>\n");
+		
+		return notificationMsg.toString();
 	}
 }
