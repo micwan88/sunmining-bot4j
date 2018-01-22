@@ -1,6 +1,7 @@
 package io.github.micwan88.smbot4j;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,6 +25,7 @@ import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.cookie.BasicClientCookie;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,7 +48,10 @@ public class SMDaemon implements AutoCloseable {
 	
 	public static final String URL_TELEGRAM_BOT_BASE = "https://api.telegram.org/bot";
 	
-	public static final String URL_SUN_MINING_BASE = "https://sun-mining.com/en";
+	public static final String SUN_MINING_DOMAIN_NAME = "sun-mining.com";
+	public static final String SUN_MINING_COOKIE_SESSION_NAME = "laravel_session";
+	public static final String SUN_MINING_COOKIE_SESSION_PATH = "/";
+	public static final String URL_SUN_MINING_BASE = "https://" + SUN_MINING_DOMAIN_NAME + "/en";
 	public static final String URL_SUN_MINING_LOGIN_PAGE = URL_SUN_MINING_BASE + "/login";
 	public static final String URL_SUN_MINING_DASHBOARD_PAGE = URL_SUN_MINING_BASE + "/dashboard";
 	public static final String URL_SUN_MINING_BALANCE_PAGE = URL_SUN_MINING_BASE + "/balance";
@@ -65,13 +70,14 @@ public class SMDaemon implements AutoCloseable {
 	
 	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+\"(\\d{4}-\\d{2}-\\d{2})\",\\s*\\]");
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_DATE = PATTERN_SM_RESP_DASHBOARD_LATEST_DATE.matcher("");
-	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+,\\s*)+(\\d+),\\s*\\]");
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+\\.*\\d*,\\s*)+(\\d+\\.*\\d*),\\s*\\]");
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT = PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT.matcher("");
 	
 	private CloseableHttpClient httpClient = null;
 	private HttpClientContext httpContext = null;
 	private BasicCookieStore cookieStore = new BasicCookieStore();
 	
+	private String smLoginSession = null;
 	private String tBotToken = null;
 	private String tBotChatID = null;
 	private long sleepTime = DEFAULT_SLEEP_TIME;
@@ -95,6 +101,12 @@ public class SMDaemon implements AutoCloseable {
 		
 		if (tBotChatID == null || tBotChatID.trim().length() == 0)
 			throw new IllegalArgumentException("tbot.chatID cannot be empty");
+		
+		smLoginSession = appProperties.getProperty("smdaemon.loginSession");
+		myLogger.debug("smdaemon.loginSession: {}" , smLoginSession);
+		
+		if (smLoginSession == null || smLoginSession.trim().length() == 0)
+			throw new IllegalArgumentException("smdaemon.loginSession cannot be empty");
 		
 		tempStr = appProperties.getProperty("smdaemon.defaultsleeptime");
 		if (tempStr != null && tempStr.trim().length() != 0) {
@@ -134,6 +146,16 @@ public class SMDaemon implements AutoCloseable {
 				.build();
 		
 		httpContext = HttpClientContext.create();
+		
+		initCookieStore();
+	}
+	
+	private void initCookieStore() {
+		BasicClientCookie sessionCookie = new BasicClientCookie(SUN_MINING_COOKIE_SESSION_NAME, smLoginSession);
+		sessionCookie.setDomain(SUN_MINING_DOMAIN_NAME);
+		sessionCookie.setPath(SUN_MINING_COOKIE_SESSION_PATH);
+		
+		cookieStore.addCookie(sessionCookie);
 	}
 	
 	public static void main(String[] args) {
@@ -168,7 +190,7 @@ public class SMDaemon implements AutoCloseable {
 				SMProfitMessage smProfitMsg = smDaemon.getSMProfit();
 				if (smProfitMsg.getErrCode() == -1) {
 					
-					respMsg = smDaemon.postNotification("Cannot login to SM");
+					//respMsg = smDaemon.postNotification("Cannot login to SM");
 					if (respMsg == null || !respMsg.equals(""))
 						myLogger.error("Cannot post notification: {}" , respMsg);
 					
@@ -177,10 +199,13 @@ public class SMDaemon implements AutoCloseable {
 				} else if (smProfitMsg.getErrCode() == 0) {
 					
 				} else {
-					//Reset http
+					smDaemon.resetHttpClient();
 				}
 				
-				smDaemon.sleep();
+				if (smProfitMsg.getErrCode() != 0)
+					smDaemon.sleep(true);
+				else
+					smDaemon.sleep();
 			}
 			
 			myLogger.debug("Process break or PID file not exist, so quit ... : {}", pidFile.toAbsolutePath());
@@ -196,8 +221,11 @@ public class SMDaemon implements AutoCloseable {
 	}
 	
 	public void resetHttpClient() {
+		myLogger.debug("Reset Http client");
 		cookieStore.clear();
 		httpContext = HttpClientContext.create();
+		
+		initCookieStore();
 	}
 	
 	public void sleep() {
@@ -284,9 +312,11 @@ public class SMDaemon implements AutoCloseable {
 			
 			ArrayList<SMProfit> profitList = new ArrayList<>();
 			while (MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.find()) {
+				myLogger.debug("Date: {}", MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.group(1));
 				if (MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.find()) {
+					myLogger.debug("Profit: {}", MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1));
 					SMProfit smProfit = new SMProfit(MATCHER_SM_RESP_DASHBOARD_LATEST_DATE.group(1), 
-							Integer.parseInt(MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1)));
+							new BigDecimal(MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT.group(1)));
 					profitList.add(smProfit);
 				} else {
 					myLogger.error("Unknown response msg: {}", responseMsg);
