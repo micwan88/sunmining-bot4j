@@ -75,6 +75,7 @@ public class SMDaemon implements AutoCloseable {
 	private String tBotToken = null;
 	private String tBotChatID = null;
 	private long sleepTime = DEFAULT_SLEEP_TIME;
+	private long errSleepTime = DEFAULT_SLEEP_TIME;
 	
 	public SMDaemon(Properties appProperties) {
 		init(appProperties);
@@ -104,6 +105,16 @@ public class SMDaemon implements AutoCloseable {
 			}
 		}
 		myLogger.debug("smdaemon.defaultsleeptime: {}" , tempStr);
+		
+		tempStr = appProperties.getProperty("smdaemon.defaulterrorsleeptime");
+		if (tempStr != null && tempStr.trim().length() != 0) {
+			try {
+				errSleepTime = Long.parseLong(tempStr);
+			} catch (Exception e) {
+				myLogger.error("Cannot parse value from smdaemon.defaulterrorsleeptime: {}", tempStr);
+			}
+		}
+		myLogger.debug("smdaemon.defaulterrorsleeptime: {}" , tempStr);
 		
 		RequestConfig httpConfig = RequestConfig.custom()
 				.setContentCompressionEnabled(true)
@@ -161,7 +172,7 @@ public class SMDaemon implements AutoCloseable {
 					if (respMsg == null || !respMsg.equals(""))
 						myLogger.error("Cannot post notification: {}" , respMsg);
 					
-					myLogger.error("Lost session, so quit ...");
+					myLogger.error("Lost session, break process ...");
 					break;
 				} else if (smProfitMsg.getErrCode() == 0) {
 					
@@ -172,7 +183,7 @@ public class SMDaemon implements AutoCloseable {
 				smDaemon.sleep();
 			}
 			
-			myLogger.debug("PID file not exist, so quit ... : {}", pidFile.toAbsolutePath());
+			myLogger.debug("Process break or PID file not exist, so quit ... : {}", pidFile.toAbsolutePath());
 		} finally {
 			myLogger.debug("SMDaemon end");
 		}
@@ -190,8 +201,12 @@ public class SMDaemon implements AutoCloseable {
 	}
 	
 	public void sleep() {
+		sleep(false);
+	}
+	
+	public void sleep(boolean isErrorSleep) {
 		try {
-			Thread.sleep(sleepTime);
+			Thread.sleep(isErrorSleep?errSleepTime:sleepTime);
 		} catch (InterruptedException e) {
 			//Do Nothing
 		}
