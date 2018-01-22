@@ -366,6 +366,14 @@ public class SMDaemon implements AutoCloseable {
 		CloseableHttpResponse httpResponse = null;
 		try {
 			httpResponse = httpClient.execute(httpget, httpContext);
+			
+			List<URI> redirectList = httpContext.getRedirectLocations();
+			if (redirectList != null)
+				if (redirectList.get(redirectList.size()-1).toString().startsWith(URL_SUN_MINING_LOGIN_PAGE)) {
+					myLogger.error("Cannot login to SM");
+					return null;
+				};
+			
 			HttpEntity httpEntity = httpResponse.getEntity();
 			if (httpEntity == null) {
 				myLogger.error("No content on the request: {}", apiURL);
