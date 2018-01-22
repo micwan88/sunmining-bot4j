@@ -34,13 +34,14 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.gson.JsonObject;
 
+import io.github.micwan88.smbot4j.bean.SMBalance;
 import io.github.micwan88.smbot4j.bean.SMProfit;
 import io.github.micwan88.smbot4j.bean.SMProfitMessage;
 import io.github.micwan88.util.AppPropertiesUtil;
 
 public class SMDaemon implements AutoCloseable {
 	public static final String PID_FILE_NAME = "SMDaemon.pid";
-	public static final long DEFAULT_SLEEP_TIME = 5000L;
+	public static final long DEFAULT_SLEEP_TIME = 60000L;
 	
 	public static final int DEFAULT_CONNECTION_POOL_REQUEST_TIMEOUT_VALUE = 3000;
 	public static final int DEFAULT_CONNECTION_TIMEOUT_VALUE = 3000;
@@ -71,10 +72,12 @@ public class SMDaemon implements AutoCloseable {
 	private final Pattern PATTERN_TELEGRAM_BOT_RESP_MSG_OK = Pattern.compile("\"ok\"\\s*\\:\\s*true");
 	private final Matcher MATCHER_TELEGRAM_BOT_RESP_MSG_OK = PATTERN_TELEGRAM_BOT_RESP_MSG_OK.matcher("");
 	
-	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+\"(\\d{4}-\\d{2}-\\d{2})\",\\s*\\]");
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+\"(\\d{4}-\\d{2}-\\d{2})\",\\s*\\]", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_DATE = PATTERN_SM_RESP_DASHBOARD_LATEST_DATE.matcher("");
-	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+\\.*\\d*,\\s*)+(\\d+\\.*\\d*),\\s*\\]");
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+\\.*\\d*,\\s*)+(\\d+\\.*\\d*),\\s*\\]", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT = PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT.matcher("");
+	private final Pattern PATTERN_SM_RESP_COIN_BALANCE = Pattern.compile("<td></td>", Pattern.MULTILINE);
+	private final Matcher MATCHER_SM_RESP_COIN_BALANCE = PATTERN_SM_RESP_COIN_BALANCE.matcher("");
 	
 	private CloseableHttpClient httpClient = null;
 	private HttpClientContext httpContext = null;
@@ -183,6 +186,7 @@ public class SMDaemon implements AutoCloseable {
 			System.exit(-2);
 		}
 		
+		boolean gotError = false;
 		String notifyMsg = null;
 		String respMsg = null;
 		SMProfit[] lastSMProfit = new SMProfit[4]; 
@@ -191,10 +195,11 @@ public class SMDaemon implements AutoCloseable {
 			myLogger.debug("Start looping ...");
 			
 			while (Files.isRegularFile(pidFile)) {
+				gotError = false;
+				
 				SMProfitMessage smProfitMsg = smDaemon.getSMProfit();
 				if (smProfitMsg.getErrCode() == -1) {
-					
-					//respMsg = smDaemon.postNotification("Cannot login to SM");
+					respMsg = smDaemon.postNotification("Cannot login to SM");
 					if (respMsg == null || !respMsg.equals(""))
 						myLogger.error("Cannot post notification: {}" , respMsg);
 					
@@ -207,15 +212,26 @@ public class SMDaemon implements AutoCloseable {
 						respMsg = smDaemon.postNotification(notifyMsg);
 						if (respMsg == null || !respMsg.equals(""))
 							myLogger.error("Cannot post notification: {}" , respMsg);
+						
+						ArrayList<SMBalance> smCoinBalanceList = smDaemon.getSMBalance();
+						if (smCoinBalanceList == null) {
+							gotError = true;
+							smDaemon.postNotification("Cannot get balance");
+							myLogger.error("Cannot get balance");
+							continue;
+						}
+						
+						respMsg = smDaemon.postNotification(smDaemon.composeBalanceNotification(smCoinBalanceList));
+						if (respMsg == null || !respMsg.equals(""))
+							myLogger.error("Cannot post notification: {}" , respMsg);
 					}
-				} else {
-					smDaemon.resetHttpClient();
-				}
+				} else
+					gotError = true;
 				
-				if (smProfitMsg.getErrCode() != 0)
-					smDaemon.sleep(true);
-				else
-					smDaemon.sleep();
+				if (gotError)
+					smDaemon.resetHttpClient();
+				
+				smDaemon.sleep(gotError);
 			}
 			
 			myLogger.debug("Process break or PID file not exist, so quit ... : {}", pidFile.toAbsolutePath());
@@ -307,13 +323,13 @@ public class SMDaemon implements AutoCloseable {
 			if (redirectList != null)
 				if (redirectList.get(redirectList.size()-1).toString().startsWith(URL_SUN_MINING_LOGIN_PAGE)) {
 					myLogger.error("Cannot login to SM");
-					return new SMProfitMessage("Cannot login to SM", -1);
+					return new SMProfitMessage(-1);
 				};
 			
 			HttpEntity httpEntity = httpResponse.getEntity();
 			if (httpEntity == null) {
 				myLogger.error("No content on the request: {}", apiURL);
-				return new SMProfitMessage("Cannot load SM page", -2);
+				return new SMProfitMessage(-2);
 			}
 			
 			String responseMsg = EntityUtils.toString(httpEntity, "UTF-8");
@@ -329,18 +345,18 @@ public class SMDaemon implements AutoCloseable {
 					profitList.add(smProfit);
 				} else {
 					myLogger.error("Unknown response msg: {}", responseMsg);
-					return new SMProfitMessage("Unknown response msg from SM page", -3);
+					return new SMProfitMessage(-3);
 				}
 			}
 			
 			if (profitList.isEmpty()) {
 				myLogger.error("Unknown response msg: {}", responseMsg);
-				return new SMProfitMessage("Unknown response msg from SM page", -3);
+				return new SMProfitMessage(-3);
 			}
 			
 			if (profitList.size() < 4) {
 				myLogger.error("Cannot parse all coins profit from SM page: {}", responseMsg);
-				return new SMProfitMessage("Cannot parse all coins profit from SM page", -4);
+				return new SMProfitMessage(-4);
 			}
 			
 			return new SMProfitMessage(profitList);
@@ -354,10 +370,10 @@ public class SMDaemon implements AutoCloseable {
 			HttpClientUtils.closeQuietly(httpResponse);
 			myLogger.debug("getSMProfit end");
 		}
-		return new SMProfitMessage("Unexpected error", -5);
+		return new SMProfitMessage(-5);
 	}
 	
-	public String getSMBalance() {
+	public ArrayList<SMBalance> getSMBalance() {
 		String apiURL = URL_SUN_MINING_BALANCE_PAGE;
 		myLogger.debug("getSMBalance URL: {}", apiURL);
 		
@@ -380,7 +396,24 @@ public class SMDaemon implements AutoCloseable {
 				return null;
 			}
 			
-			return EntityUtils.toString(httpEntity, "UTF-8");
+			ArrayList<SMBalance> smCoinBalanceList = new ArrayList<>();
+			String responseMsg = EntityUtils.toString(httpEntity, "UTF-8");
+			MATCHER_SM_RESP_COIN_BALANCE.reset(responseMsg);
+			while (MATCHER_SM_RESP_COIN_BALANCE.find()) {
+				myLogger.debug("Balance {}: {} ({} USD)", MATCHER_SM_RESP_COIN_BALANCE.group(1),
+						MATCHER_SM_RESP_COIN_BALANCE.group(2), MATCHER_SM_RESP_COIN_BALANCE.group(3));
+				
+				smCoinBalanceList.add(new SMBalance(MATCHER_SM_RESP_COIN_BALANCE.group(1).trim(),
+						new BigDecimal(MATCHER_SM_RESP_COIN_BALANCE.group(2)),
+						new BigDecimal(MATCHER_SM_RESP_COIN_BALANCE.group(3))));
+			}
+			
+			if (smCoinBalanceList.isEmpty()) {
+				myLogger.error("Unknown response msg: {}", responseMsg);
+				return null;
+			}
+			
+			return smCoinBalanceList;
 		} catch (IOException e) {
 			myLogger.error("Cannot execute http request", e);
 		} catch (Exception e) {
@@ -413,6 +446,18 @@ public class SMDaemon implements AutoCloseable {
 		
 		if (notificationMsg.length() > 0)
 			notificationMsg.insert(0, "SM Profit of <b>" + todayDateStr + "</b>\n");
+		
+		return notificationMsg.toString();
+	}
+	
+	public String composeBalanceNotification(ArrayList<SMBalance> smCoinBalanceList) {
+		StringBuffer notificationMsg = new StringBuffer("Current Coin Balance -\n");
+		
+		for (SMBalance smCoinBalance : smCoinBalanceList) {
+			notificationMsg.append(smCoinBalance.getCoinName()).append(":");
+			notificationMsg.append(smCoinBalance.getBalance()).append("(");
+			notificationMsg.append(smCoinBalance.getUsdEquiv()).append(" USD)\n");
+		}
 		
 		return notificationMsg.toString();
 	}
