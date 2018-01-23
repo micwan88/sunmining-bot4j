@@ -56,6 +56,8 @@ public class AppPropertiesUtil {
 			myLogger.debug("appProperties is null, try loading {}", APP_PROPERTY_FILE);
 			
 			InputStream inStream = this.getClass().getResourceAsStream("/" + APP_PROPERTY_FILE);
+			if (inStream == null)
+				inStream = this.getClass().getResourceAsStream(APP_PROPERTY_FILE);
 			if (inStream == null) {
 				myLogger.error("{} not found !", APP_PROPERTY_FILE);
 				return null;
