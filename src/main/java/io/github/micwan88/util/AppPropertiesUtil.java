@@ -5,12 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
-import java.net.URISyntaxException;
 import java.nio.charset.Charset;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
@@ -58,19 +55,7 @@ public class AppPropertiesUtil {
 		if (appProperties == null) {
 			myLogger.debug("appProperties is null, try loading {}", APP_PROPERTY_FILE);
 			
-			InputStream inStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(APP_PROPERTY_FILE);
-			
-			try {
-				DirectoryStream<Path> directoryStream = Files.newDirectoryStream(Paths.get(this.getClass().getResource("/").toURI()));
-				for (Path path : directoryStream)
-					myLogger.debug(path);
-				directoryStream.close();
-			} catch (IOException e) {
-				myLogger.error(e);
-			} catch (URISyntaxException e) {
-				myLogger.error(e);
-			}
-			
+			InputStream inStream = this.getClass().getResourceAsStream("/" + APP_PROPERTY_FILE);
 			if (inStream == null) {
 				myLogger.error("{} not found !", APP_PROPERTY_FILE);
 				return null;
