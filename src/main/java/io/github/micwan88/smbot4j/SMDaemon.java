@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -74,9 +75,9 @@ public class SMDaemon implements AutoCloseable {
 	
 	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_DATE = Pattern.compile("categories:\\s*\\[\\s*(?:\"\\d{4}-\\d{2}-\\d{2}\",\\s*)+\"(\\d{4}-\\d{2}-\\d{2})\",\\s*\\]", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_DATE = PATTERN_SM_RESP_DASHBOARD_LATEST_DATE.matcher("");
-	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+\\.*\\d*,\\s*)+(\\d+\\.*\\d*),\\s*\\]", Pattern.MULTILINE);
+	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+\\.*\\d*,\\s*)+(\\d+\\.?\\d*),\\s*\\]", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT = PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT.matcher("");
-	private final Pattern PATTERN_SM_RESP_COIN_BALANCE = Pattern.compile("<td></td>", Pattern.MULTILINE);
+	private final Pattern PATTERN_SM_RESP_COIN_BALANCE = Pattern.compile("<tr>\\s*<td>(?:Bitcoin|Ether|Dash|Litecoin)</td>\\s*<td>(BTC|ETH|DASH|LTC)</td>\\s*<td>(\\d+(?:\\.\\d+)?)</td>\\s*<td>\\s*(\\d+(?:\\.\\d+)?)\\s*</td>", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_COIN_BALANCE = PATTERN_SM_RESP_COIN_BALANCE.matcher("");
 	
 	private CloseableHttpClient httpClient = null;
@@ -451,12 +452,18 @@ public class SMDaemon implements AutoCloseable {
 	}
 	
 	public String composeBalanceNotification(ArrayList<SMBalance> smCoinBalanceList) {
-		StringBuffer notificationMsg = new StringBuffer("Current Coin Balance -\n");
+		StringBuffer notificationMsg = new StringBuffer("Coin Balance of <b>");
+		DecimalFormat coinBalanceFormat = new DecimalFormat("0.00000000");
+		DecimalFormat usdBalanceFormat = new DecimalFormat("0.00");
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+		String todayDateStr = dateFormat.format(new Date());
+		
+		notificationMsg.append(todayDateStr).append("</b>\n");
 		
 		for (SMBalance smCoinBalance : smCoinBalanceList) {
-			notificationMsg.append(smCoinBalance.getCoinName()).append(":");
-			notificationMsg.append(smCoinBalance.getBalance()).append("(");
-			notificationMsg.append(smCoinBalance.getUsdEquiv()).append(" USD)\n");
+			notificationMsg.append(smCoinBalance.getCoinName()).append(": ");
+			notificationMsg.append(coinBalanceFormat.format(smCoinBalance.getBalance())).append(" (");
+			notificationMsg.append(usdBalanceFormat.format(smCoinBalance.getUsdEquiv())).append(" USD)\n");
 		}
 		
 		return notificationMsg.toString();
