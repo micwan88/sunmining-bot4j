@@ -78,7 +78,8 @@ public class SMDaemon implements AutoCloseable {
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_DATE = PATTERN_SM_RESP_DASHBOARD_LATEST_DATE.matcher("");
 	private final Pattern PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT = Pattern.compile("data:\\s*\\[\\s*(?:\\d+\\.*\\d*,\\s*)+(\\d+\\.?\\d*),\\s*\\]", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_DASHBOARD_LATEST_PROFIT = PATTERN_SM_RESP_DASHBOARD_LATEST_PROFIT.matcher("");
-	private final Pattern PATTERN_SM_RESP_COIN_BALANCE = Pattern.compile("<tr>\\s*<td>(?:Bitcoin|Ether|Dash|Litecoin)</td>\\s*<td>(BTC|ETH|DASH|LTC)</td>\\s*<td>(\\d+(?:\\.\\d+)?)</td>\\s*<td>\\s*(\\d+(?:\\.\\d+)?)\\s*</td>", Pattern.MULTILINE);
+	//private final Pattern PATTERN_SM_RESP_COIN_BALANCE = Pattern.compile("<tr>\\s*<td>(?:Bitcoin|Ether|Dash|Litecoin)</td>\\s*<td>(BTC|ETH|DASH|LTC)</td>\\s*<td>(\\d+(?:\\.\\d+)?)</td>\\s*<td>\\s*(\\d+(?:\\.\\d+)?)\\s*</td>", Pattern.MULTILINE);
+	private final Pattern PATTERN_SM_RESP_COIN_BALANCE = Pattern.compile("<tr>\\s*<td>(?:Bitcoin|Ether|Litecoin)</td>\\s*<td>(BTC|ETH|LTC)</td>\\s*<td>(\\d+(?:\\.\\d+)?)</td>\\s*<td>\\s*(\\d+(?:\\.\\d+)?)\\s*</td>", Pattern.MULTILINE);
 	private final Matcher MATCHER_SM_RESP_COIN_BALANCE = PATTERN_SM_RESP_COIN_BALANCE.matcher("");
 	
 	private CloseableHttpClient httpClient = null;
