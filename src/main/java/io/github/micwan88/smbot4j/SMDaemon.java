@@ -59,7 +59,8 @@ public class SMDaemon implements AutoCloseable {
 	public static final String URL_SUN_MINING_LOGIN_PAGE = URL_SUN_MINING_BASE + "/login";
 	public static final String URL_SUN_MINING_DASHBOARD_PAGE = URL_SUN_MINING_BASE + "/dashboard";
 	public static final String URL_SUN_MINING_BALANCE_PAGE = URL_SUN_MINING_BASE + "/balance";
-	public static final String[] SUN_MINING_COINS_ARRAY = {"Btc", "Eth", "Dash", "Ltc"};
+	//public static final String[] SUN_MINING_COINS_ARRAY = {"Btc", "Eth", "Dash", "Ltc"};
+	public static final String[] SUN_MINING_COINS_ARRAY = {"Btc", "Eth", "Ltc"};
 	
 	public static final String HTTP_HEADER_CONTENT_TYPE = "Content-Type";
 	public static final String CONTENT_TYPE_JSON = "application/json";
@@ -190,7 +191,7 @@ public class SMDaemon implements AutoCloseable {
 		boolean gotError = false;
 		String notifyMsg = null;
 		String respMsg = null;
-		SMProfit[] lastSMProfit = new SMProfit[4]; 
+		SMProfit[] lastSMProfit = new SMProfit[SUN_MINING_COINS_ARRAY.length]; 
 		try (SMDaemon smDaemon = new SMDaemon(appProperties)) {
 			
 			myLogger.debug("Start looping ...");
@@ -355,7 +356,7 @@ public class SMDaemon implements AutoCloseable {
 				return new SMProfitMessage(-3);
 			}
 			
-			if (profitList.size() < 4) {
+			if (profitList.size() < SUN_MINING_COINS_ARRAY.length) {
 				myLogger.error("Cannot parse all coins profit from SM page: {}", responseMsg);
 				return new SMProfitMessage(-4);
 			}
@@ -431,7 +432,7 @@ public class SMDaemon implements AutoCloseable {
 		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
 		String todayDateStr = dateFormat.format(new Date());
 		
-		for (int i=0; i<4; i++) {
+		for (int i=0; i<SUN_MINING_COINS_ARRAY.length; i++) {
 			SMProfit smProfit = smProfitList.get(i);
 			//myLogger.debug(smProfit.getProfitDate() + ":" + smProfit.getProfitValue());
 			if (dateFormat.format(smProfit.getProfitDate()).equals(todayDateStr) && smProfit.getProfitValue().compareTo(new BigDecimal(0)) > 0) {
